@@ -1,0 +1,225 @@
+import sys
+import pyttsx3
+import speech_recognition as sr
+import datetime
+import os
+import cv2
+import random
+from requests import get
+import wikipedia
+import webbrowser
+import pywhatkit as kit
+
+# --- CONFIGURATION ---
+ASSISTANT_NAME = "Jarvis"
+MUSIC_DIRECTORY = "C:\\Users\\Public\\Music"
+RECOGNITION_LANGUAGE = 'en-in'
+VOICE_INDEX = 0  # 0 for male, 1 for female
+
+# --- INITIALIZATION ---
+try:
+    engine = pyttsx3.init('sapi5')
+    voices = engine.getProperty('voices')
+    engine.setProperty('voice', voices[VOICE_INDEX].id)
+except Exception as e:
+    print(f"[WARN] TTS initialization failed: {e}")
+
+# --- HELPER FUNCTIONS ---
+def speak(audio):
+    try:
+        print(f"[{ASSISTANT_NAME}]: {audio}")
+        engine.say(audio)
+        engine.runAndWait()
+    except Exception as e:
+        print(f"[ERROR] TTS failed: {e}")
+
+def takecommand():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening...")
+        r.pause_threshold = 0.8
+        r.energy_threshold = 4000
+        try:
+            audio = r.listen(source, timeout=5, phrase_time_limit=5)
+        except sr.WaitTimeoutError:
+            print("[INFO] No speech detected.")
+            return "none"
+        except Exception as e:
+            print(f"[ERROR] Microphone error: {e}")
+            return "none"
+
+    try:
+        print("Recognizing...")
+        query = r.recognize_google(audio, language=RECOGNITION_LANGUAGE)
+        print(f"User said: {query}")
+        return query.lower()
+    except sr.UnknownValueError:
+        print("[INFO] Could not understand audio.")
+        return "none"
+    except sr.RequestError as e:
+        print(f"[ERROR] Recognition service error: {e}")
+        speak("Speech service is unavailable.")
+        return "error"
+    except Exception as e:
+        print(f"[ERROR] Recognition failed: {e}")
+        return "none"
+
+def wish_me():
+    hour = datetime.datetime.now().hour
+    if 0 <= hour < 12:
+        greeting = "Good Morning"
+    elif 12 <= hour < 18:
+        greeting = "Good Afternoon"
+    else:
+        greeting = "Good Evening"
+    speak(f"{greeting}, sir. I am {ASSISTANT_NAME}. How can I help you?")
+
+def handle_camera():
+    speak("Opening camera. Press 'q' to close.")
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        speak("Unable to access the camera.")
+        return
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                speak("Camera feed not available.")
+                break
+            cv2.imshow(f"{ASSISTANT_NAME} Camera", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    except Exception as e:
+        speak("Camera error occurred.")
+        print(f"[ERROR] Camera: {e}")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        speak("Camera closed.")
+
+# --- COMMAND EXECUTION ---
+def execute_command(command):
+    if "open notepad" in command:
+        try:
+            os.startfile("notepad.exe")
+            speak("Opening Notepad.")
+        except Exception as e:
+            speak("Couldn't open Notepad.")
+            print(f"[ERROR] Notepad: {e}")
+
+    elif "open command prompt" in command or "open cmd" in command:
+        try:
+            os.system("start cmd")
+            speak("Opening Command Prompt.")
+        except Exception as e:
+            speak("Couldn't open Command Prompt.")
+            print(f"[ERROR] CMD: {e}")
+
+    elif "play music" in command:
+        try:
+            songs = os.listdir(MUSIC_DIRECTORY)
+            music_files = [f for f in songs if f.endswith(('.mp3', '.wav', '.flac'))]
+            if music_files:
+                rd = random.choice(music_files)
+                os.startfile(os.path.join(MUSIC_DIRECTORY, rd))
+                speak("Playing music.")
+            else:
+                speak("No music files found.")
+        except Exception as e:
+            speak("Couldn't play music.")
+            print(f"[ERROR] Music: {e}")
+
+    elif "open camera" in command or "start camera" in command:
+        handle_camera()
+
+    elif "ip address" in command:
+        try:
+            ip = get('https://api.ipify.org').text
+            speak(f"Your IP address is {ip}")
+        except Exception as e:
+            speak("Couldn't fetch IP address.")
+            print(f"[ERROR] IP: {e}")
+
+    elif "wikipedia" in command:
+        try:
+            speak("Searching Wikipedia...")
+            query = command.replace("wikipedia", "").strip()
+            if not query:
+                speak("What should I search on Wikipedia?")
+                return
+            results = wikipedia.summary(query, sentences=2)
+            speak(f"According to Wikipedia, {results}")
+        except wikipedia.exceptions.DisambiguationError:
+            speak("Please be more specific.")
+        except wikipedia.exceptions.PageError:
+            speak("No information found.")
+        except Exception as e:
+            speak("Wikipedia search failed.")
+            print(f"[ERROR] Wikipedia: {e}")
+
+    elif "open youtube" in command:
+        webbrowser.open("https://youtube.com")
+        speak("Opening YouTube.")
+
+    elif "open google" in command:
+        webbrowser.open("https://google.com")
+        speak("Opening Google.")
+
+    elif "open facebook" in command:
+        webbrowser.open("https://facebook.com")
+        speak("Opening Facebook.")
+
+    elif "open whatsapp" in command:
+        webbrowser.open("https://web.whatsapp.com")
+        speak("Opening WhatsApp Web.")
+
+    elif "open instagram" in command:
+        webbrowser.open("https://instagram.com")
+        speak("Opening Instagram.")
+
+    elif "play" in command and "on youtube" in command:
+        search_query = command.replace("play", "").replace("on youtube", "").strip()
+        if search_query:
+            speak(f"Playing {search_query} on YouTube.")
+            kit.playonyt(search_query)
+        else:
+            speak("What should I play on YouTube?")
+
+    elif "send message" in command or "whatsapp message" in command:
+        try:
+            speak("Sending a test WhatsApp message shortly.")
+            now = datetime.datetime.now()
+            kit.sendwhatmsg("+919021412625", "Hi Sir, this is a test from Jarvis.", now.hour, now.minute + 1)
+        except Exception as e:
+            speak("Failed to send WhatsApp message.")
+            print(f"[ERROR] WhatsApp: {e}")
+
+    elif "close notepad" in command:
+        speak("Closing Notepad.")
+        os.system("taskkill /f /im notepad.exe")
+
+    elif "close command prompt" in command:
+        speak("Closing Command Prompt.")
+        os.system("taskkill /f /im cmd.exe")
+
+    elif "close google" in command:
+        speak("Closing Google Chrome.")
+        os.system("taskkill /f /im chrome.exe")
+
+    elif "stop" in command or "exit" in command or "no thanks" in command:
+        speak("Thanks for using me, sir. Goodbye and have a great day!")
+        sys.exit()
+
+    else:
+        if command != "none":
+            speak("Sorry, I didn't understand that command.")
+            print(f"[INFO] Unrecognized command: {command}")
+
+# --- MAIN EXECUTION ---
+if _name_ == "_main_":
+    wish_me()
+    while True:
+        command = takecommand()
+        if command in ("none", "error"):
+            continue
+        execute_command(command)
